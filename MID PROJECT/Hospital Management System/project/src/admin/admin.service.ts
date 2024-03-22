@@ -1,69 +1,210 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { AdminEntity } from "./admin.entity";
+import { AdminEntity, DoctorEntity, OTP_Entity } from "./admin.entity";
 import { Repository } from "typeorm";
-import { CreateUserDto, UpdateUserStatusDto } from "./admin.dto";
-
+import { AdminDTO, CreateUserDto, UpdateUserDto } from "./admin.dto";
+import { scheduled } from "rxjs";
+import * as bcrypt from 'bcrypt';
+import { MailerService } from '@nestjs-modules/mailer'
 @Injectable()
 export class AdminService {
 
-    gettests(): object {
-        return { message: "test -good" }
-    }
-    gettestsById(id: string): object {
-        return { message: "You test id is " + id };
-    }
-    gettestsByNameAndId(name: string, id: string): object {
-        return {
-            message: "test name is " + name +
-                " and test id is " + id
-        };
+   
 
-    }
-    add(name: string): object {
-        return { message: "test is " + name };
-    }
-    create(name: string): object {
-        return { message: "test is create" + name };
-    }
-    update(name: string): object {
-        return { message: "test is update " + name };
-
-    }
-    delete(name: string): object {
-        return { message: "test delete " + name };
-
-    }
-
-    constructor(@InjectRepository(AdminEntity) private userRepository: Repository<AdminEntity>) { }
-    async createUser(createUserDto: CreateUserDto): Promise<AdminEntity> {
+    constructor(
+    @InjectRepository(DoctorEntity) private userRepository: Repository<DoctorEntity>,
+    @InjectRepository(AdminEntity) private adminRepo: Repository<AdminEntity>,
+    @InjectRepository(OTP_Entity) private otpRepo: Repository<OTP_Entity>,
+    private readonly mailerService: MailerService,
+    ){}
+    async adminRegistration(data: AdminDTO): Promise<AdminEntity> {
+        try {
+          const salt = await bcrypt.genSalt();
+          const hashedPass = await bcrypt.hash(data.password, salt);
+    
+          const result = await this.adminRepo.save({
+            ...data,
+            password: hashedPass,
+          });
+          return result;
+        } catch (error) {
+          throw new InternalServerErrorException(
+            'User data is not saved in database',
+            { cause: new Error(), description: error },
+          );
+        }
+      }
+    
+      async signIn(data: { email: string; password: string }) {
+        const userdata = await this.adminRepo.findOneBy({ email: data.email });
+        if (!userdata) {
+          return { isUserExist: false, message: 'User does not exist' };
+        } else {
+          const isValidPass: boolean = await bcrypt.compare(
+            data.password,
+            userdata.password,
+          );
+          if (isValidPass) {
+            const { id, name, email, phone } = userdata;
+            return {
+              isUserExist: true,
+              isValidPass,
+              data: { id, name, email, phone },
+            };
+          } else {
+            return {
+              isUserExist: true,
+              isValidPass,
+              message: 'Password is not correct',
+            };
+          }
+        }
+      }
+    
+      async getAdmin(email: string): Promise<AdminEntity | null> {
+        const result = await this.adminRepo.findOneBy({ email });
+        return result;
+      }
+    
+      async sendOTPResetPassword(email: string) {
+        const otp = Math.floor(100000 + Math.random() * 900000);
+        const result = await this.adminRepo.findOneBy({ email });
+    
+        if (!result) {
+          return { message: 'User does not exist', isUserExist: false };
+        } else {
+          const otpResult = await this.otpRepo.save({
+            otp: otp.toString(),
+            email,
+            status: 0,
+          });
+          if (!otpResult) {
+            return { message: 'OTP not saved', isUserExist: true, error: true };
+          } else {
+            //use sendMail to send email
+            const sendResult = await this.mailerService.sendMail({
+              from: `Event Management System <${process.env.MAIL_USER}>`, // sender address
+              to: email,
+              subject: 'OTP for reset password',
+              text: `OTP code for reset your password: ${otp}`,
+            });
+            console.log(sendResult, 'sendResult');
+            if (!sendResult) {
+              return {
+                message: 'OTP not sent',
+                isUserExist: true,
+                mailSended: false,
+                error: true,
+              };
+            } else {
+              return {
+                message: 'OTP sent',
+                isUserExist: true,
+                mailSended: true,
+              };
+            }
+          }
+        }
+      }
+    
+      async verifyOTPResetPassword(data: { email: string; otp: string }) {
+        const otpResult = await this.otpRepo.findOneBy({
+          email: data.email,
+          otp: data.otp,
+          status: 0,
+        });
+        if (!otpResult) {
+          return { message: 'OTP not matched', isOTPMatched: false };
+        } else {
+          const updatedOtp = await this.otpRepo.update(
+            { id: otpResult.id },
+            { status: 1 },
+          );
+          if (!updatedOtp) {
+            return { message: 'OTP not updated', isOTPMatched: false };
+          }
+          return { message: 'OTP matched', isOTPMatched: true };
+        }
+      }
+    
+      async resetPassword(data: { email: string; password: string; otp: string }) {
+        const otpResult = await this.otpRepo.findOneBy({
+          email: data.email,
+          otp: data.otp,
+          status: 1,
+        });
+        if (!otpResult) {
+          return {
+            message: 'OTP not matched',
+            isOTPMatched: false,
+            isPasswordUpdated: false,
+          };
+        } else {
+          const salt = await bcrypt.genSalt();
+          const hashedPass = await bcrypt.hash(data.password, salt);
+          const updatedPass = await this.adminRepo.update(
+            { email: data.email },
+            { password: hashedPass },
+          );
+          if (!updatedPass) {
+            return {
+              message: 'Password not updated',
+              isPasswordUpdated: false,
+              isOTPMatched: true,
+            };
+          } else {
+            return {
+              message: 'Password updated',
+              isPasswordUpdated: true,
+              isOTPMatched: true,
+            };
+          }
+        }
+      }
+    
+      async updateProfile(data: AdminDTO, email: string) {
+        console.log(data, 'email');
+        const result = await this.adminRepo.update({ email }, data);
+        console.log(result, 'result');
+        if (!result) {
+          return { message: 'Profile not updated', isProfileUpdated: false };
+        } else {
+          return { message: 'Profile updated', isProfileUpdated: true };
+        }
+      }
+    async createUser(createUserDto: CreateUserDto): Promise<DoctorEntity> {
         const user = this.userRepository.create(createUserDto);
         return this.userRepository.save(user);
     }
-
-    async updateUserStatus(updateUserStatusDto: UpdateUserStatusDto): Promise<AdminEntity> {
-        const { userId, newStatus } = updateUserStatusDto;
-        const user = await this.userRepository.findOne({ where: { id: userId } });
+  async updateUser(updateUserDto: UpdateUserDto): Promise<DoctorEntity> {
+        const { DoctorID,  Schedule,Salary } = updateUserDto;
+        const user = await this.userRepository.findOne({ where: { DoctorID: DoctorID } });
         if (!user) {
-            throw new NotFoundException(`User with ID ${userId} not found`);
+            throw new NotFoundException(`User with ID ${DoctorID} not found`);
         }
-        user.status = newStatus;
+        user.Schedule = Schedule;
+        user.salary=Salary;
         return this.userRepository.save(user);
     }
 
+        
 
-    async getInactiveUsers(): Promise<AdminEntity[]> {
-        return this.userRepository.find({ where: { status: 'inactive' } });
-    }
-
-    async getUsersOlderThan40(): Promise<AdminEntity[]> {
+    async getUsersOlderThan40(): Promise<DoctorEntity[]> {
         return this.userRepository.createQueryBuilder('user')
             .where('user.age > :age', { age: 40 })
             .getMany();
     }
 
-    async getAllUsers(): Promise<AdminEntity[]> {
+    async getAllUsers(): Promise<DoctorEntity[]> {
         return this.userRepository.find();
     }
+    async deleteUser(userId: number): Promise<void> {
+        await this.userRepository.delete(userId);
+    }
+  
+    async searchByname(fullName: string): Promise<DoctorEntity[]> {
+        return this.userRepository.find({ where: { fullName } });
+    }
+
 
 }
