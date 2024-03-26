@@ -1,24 +1,10 @@
-import { Column, Entity, PrimaryGeneratedColumn, Unique } from "typeorm";
+import { Column, Entity, JoinColumn, OneToMany, OneToOne, PrimaryColumn, PrimaryGeneratedColumn, Unique } from "typeorm";
+import { receptionistEntity } from "./receptionist.enity";
+import { DoctorEntity } from "./Doctor.entity";
+import { nurseEntity } from "./nurse.entity";
 
-@Entity('Doctor_Info')
-export class DoctorEntity{
-    @PrimaryGeneratedColumn()
-    DoctorID:number;
 
-    @Column({ length: 100 })
-    fullName: string;
-    @Column({ length: 256 })
-    Qualification:string;
-    @Column({ unsigned: true })
-    salary: number;
-    @Column({ length: 124 })
-    Email: string;
-    @Column({length:130})
-    PhoneNumber:string
-    @Column({unsigned:true})
-    Schedule:string;
-
-}
+@Entity('adminData')
 export class AdminEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -33,17 +19,28 @@ export class AdminEntity {
     @Column()
     password: string;
   
-    @Column()
-    dob: Date;
   
     @Column()
     phone: string;
   
     @Column()
     address: string;
-  
+    @OneToMany(() => receptionistEntity,recepitionist => recepitionist.adminData)
+    recepitionist: receptionistEntity;
+    
+    @OneToMany(() => DoctorEntity,Doctor_Info => Doctor_Info.adminData)
+    Doctor_Info:DoctorEntity;
+    @OneToMany(() => nurseEntity ,nurseData => nurseData.adminData, { cascade: true })
+    nurseData: nurseEntity[];
+
+   }
+  @Entity('imageData')
+  export class image_Enity{
+   @PrimaryColumn()
+   id:number;
     @Column()
-    imageUrl: string;
+   Image:string;
+
   }
   
   @Entity('OTP')
@@ -60,7 +57,3 @@ export class AdminEntity {
     @Column()
     status: number;
   }
-@Entity('Nurse_info')
-export class NurseEntity{
-
-}
