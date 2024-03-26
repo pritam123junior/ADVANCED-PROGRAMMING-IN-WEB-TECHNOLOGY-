@@ -1,9 +1,13 @@
 import { Module } from "@nestjs/common";
 import { AdminController } from "./admin.controller";
 import { AdminService } from "./admin.service";
-import { AdminEntity, DoctorEntity, OTP_Entity } from "./admin.entity";
+import { AdminEntity,  OTP_Entity,image_Enity } from "./admin.entity";
+import { DoctorEntity } from "./Doctor.entity";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule } from "@nestjs/config";
+import { receptionistEntity } from "src/admin/receptionist.enity";
+import { nurseEntity } from "src/admin/nurse.entity";
+
 import { MailerModule } from "@nestjs-modules/mailer";
 
 
@@ -22,7 +26,7 @@ import { MailerModule } from "@nestjs-modules/mailer";
             tls: { rejectUnauthorized: false },
           },
         }),
-        TypeOrmModule.forFeature([ DoctorEntity,AdminEntity,OTP_Entity]),],
+      TypeOrmModule.forFeature([ DoctorEntity,nurseEntity,receptionistEntity,AdminEntity,image_Enity,OTP_Entity]),],
 controllers: [AdminController],
 providers:[AdminService],
 })
