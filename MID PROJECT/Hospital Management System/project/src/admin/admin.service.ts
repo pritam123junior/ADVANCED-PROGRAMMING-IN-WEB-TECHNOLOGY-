@@ -76,7 +76,102 @@ export class AdminService {
       return this.imageRpo.save(data);
 
     }
-        
+        async sendOTPResetPassword(email: string) {
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    const result = await this.adminRepo.findOneBy({ email });
+
+    if (!result) {
+      return { message: 'User does not exist', isUserExist: false };
+    } else {
+      const otpResult = await this.otpRepo.save({
+        otp: otp.toString(),
+        email,
+        status: 0,
+      });
+      if (!otpResult) {
+        return { message: 'OTP not saved', isUserExist: true, error: true };
+      } else {
+        //use sendMail to send email
+        const sendResult = await this.mailerService.sendMail({
+          from: `Event Management System <${process.env.MAIL_USER}>`, // sender address
+          to: email,
+          subject: 'OTP for reset password',
+          text: `OTP code for reset your password: ${otp}`,
+        });
+        console.log(sendResult, 'sendResult');
+        if (!sendResult) {
+          return {
+            message: 'OTP not sent',
+            isUserExist: true,
+            mailSended: false,
+            error: true,
+          };
+        } else {
+          return {
+            message: 'OTP sent',
+            isUserExist: true,
+            mailSended: true,
+          };
+        }
+      }
+    }
+  }
+
+  async verifyOTPResetPassword(data: { email: string; otp: string }) {
+    const otpResult = await this.otpRepo.findOneBy({
+      email: data.email,
+      otp: data.otp,
+      status: 0,
+    });
+    if (!otpResult) {
+      return { message: 'OTP not matched', isOTPMatched: false };
+    } else {
+      const updatedOtp = await this.otpRepo.update(
+        { id: otpResult.id },
+        { status: 1 },
+      );
+      if (!updatedOtp) {
+        return { message: 'OTP not updated', isOTPMatched: false };
+      }
+      return { message: 'OTP matched', isOTPMatched: true };
+    }
+  }
+
+  async resetPassword(data: { email: string; password: string; otp: string }) {
+    const otpResult = await this.otpRepo.findOneBy({
+      email: data.email,
+      otp: data.otp,
+      status: 1,
+    });
+    if (!otpResult) {
+      return {
+        message: 'OTP not matched',
+        isOTPMatched: false,
+        isPasswordUpdated: false,
+      };
+    } else {
+      const salt = await bcrypt.genSalt();
+      const hashedPass = await bcrypt.hash(data.password, salt);
+      const updatedPass = await this.adminRepo.update(
+        { email: data.email },
+        { password: hashedPass },
+      );
+      if (!updatedPass) {
+        return {
+          message: 'Password not updated',
+          isPasswordUpdated: false,
+          isOTPMatched: true,
+        };
+      } else {
+        return {
+          message: 'Password updated',
+          isPasswordUpdated: true,
+          isOTPMatched: true,
+        };
+      }
+    }
+  }
+
   
     async updateProfile(data: AdminDTO, email: string) {
       console.log(data, 'email');
