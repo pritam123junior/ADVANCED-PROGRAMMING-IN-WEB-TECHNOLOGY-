@@ -58,7 +58,45 @@ export class AdminController {
       }
   
     
-    
+      @Get('/getResetPassOtp/:email')
+  async getResetPassOtp(@Param() data: { email: string }) {
+    const result = await this.adminService.sendOTPResetPassword(data.email);
+    if (result.isUserExist) {
+      if (result.error) {
+        throw new HttpException(result, 500);
+      } else {
+        return result;
+      }
+    } else {
+      throw new HttpException(result, 400);
+    }
+  }
+
+  @Post('/verifyOtp')
+  async verifyOtp(@Body() data: { email: string; otp: string }) {
+    const result = await this.adminService.verifyOTPResetPassword(data);
+    if (!result.isOTPMatched) {
+      throw new HttpException(result, 400);
+    } else {
+      return result;
+    }
+  }
+
+  @Post('/resetPassword')
+  async resetPassword(
+    @Body() data: { email: string; password: string; otp: string },
+  ) {
+    const result = await this.adminService.resetPassword(data);
+    if (!result.isOTPMatched) {
+      throw new HttpException(result, 400);
+    } else {
+      if (result.isPasswordUpdated) {
+        return result;
+      } else {
+        throw new HttpException(result, 500);
+      }
+    }
+  }
     
       @Patch('/updateProfile')
      
